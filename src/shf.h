@@ -354,7 +354,9 @@ extern __thread uint32_t   shf_val_len      ;
 extern __thread uint32_t   shf_qiid         ;
 extern __thread char     * shf_qiid_addr    ;
 extern __thread uint32_t   shf_qiid_addr_len;
-
+#ifdef __cplusplus
+extern "C"{
+#endif
 extern pid_t      shf_exec_child           (const char * child_path, const char * child_file, const char * child_argument_1, char  * child_argument_2);
 extern char     * shf_backticks            (const char * command);
 extern double     shf_get_time_in_seconds  (void);
@@ -400,7 +402,9 @@ extern int        shf_log_vfprintf         (FILE * stream, const char * format, 
 extern void       shf_log_fprintf          (FILE * stream, const char * format, ...);
 extern void       shf_log_fputs            (const char * string, FILE * stream);
 extern void       shf_log_fputc            (int character, FILE * stream);
-
+#ifdef __cplusplus
+};
+#endif
 // Useful links regarding /dev/shm:
 // http://gerardnico.com/wiki/linux/shared_memory - Linux - Shared Memory (SHM) (/dev/shm)
 // http://www.cyberciti.biz/tips/what-is-devshm-and-its-practical-usage.html - What Is /dev/shm And Its Practical Usage

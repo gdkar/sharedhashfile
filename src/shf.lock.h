@@ -27,6 +27,18 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE      /* See feature_test_macros(7) */
 #endif
+
+#ifdef __cplusplus
+#include <atomic>
+template<typename T>
+inline T atomic_fetch_and(std::atomic<T> *arg, T val)
+{
+  return arg->fetch_and(val);
+}
+#define _Atomic(type) std::atomic<type>
+#else
+#include <stdatomic.h>
+#endif
 #include <unistd.h>
 #include <sys/syscall.h> /* For SYS_xxx definitions; see man syscall */
 #include <sched.h>
@@ -47,15 +59,17 @@
 #if (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) > 40100
 
     static inline long
-    InterlockedCompareExchange(volatile long * const Destination, const long Exchange, const long Comperand)
+    InterlockedCompareExchange(_Atomic(long) * const Destination, const long Exchange, const long Comperand)
     {
-        return __sync_val_compare_and_swap(Destination, Comperand, Exchange);
+        long Old = Comperand;
+        atomic_compare_exchange_strong(Destination, &Old, Exchange);
+        return Old;
     }
 
     static inline long
-    InterlockedExchangeAdd(long volatile * Addend, long Value)
+    InterlockedExchangeAdd(_Atomic(long) * Addend, long Value)
     {
-        return __sync_add_and_fetch(Addend, Value);
+        return atomic_fetch_add(Addend, Value);
     }
 
     #define SHF_GETTID() syscall(SYS_gettid)
@@ -76,12 +90,12 @@ typedef enum SHF_SPIN_LOCK_STATUS {
 }  SHF_LOCK_STATUS;
 
 typedef struct SHF_SPIN_LOCK {
-    volatile long     lock;
-    volatile pid_t    pid; /* todo: make long lock hold tid & pid to save memory */
+    _Atomic(long)     lock;
+    _Atomic(pid_t)    pid; /* todo: make long lock hold tid & pid to save memory */
 #ifdef SHF_DEBUG_VERSION
-    volatile uint32_t line;
-    volatile uint64_t macro;
-    volatile uint64_t conflicts; /* count how often lock did not lock on first try */
+    _Atomic(uint32_t) line;
+    _Atomic(uint64_t) macro;
+    _Atomic(uint64_t) conflicts; /* count how often lock did not lock on first try */
 #endif
 } SHF_SPIN_LOCK;
 
@@ -119,20 +133,20 @@ RETRY_LOCK_AFTER_FORCE:;
 
     if (spin == SHF_SPIN_LOCK_SPIN_MAX) {
         char proc_pid_task_tid[256];
-        SHF_SNPRINTF(1, proc_pid_task_tid, "/proc/%u/task/%lu", lock->pid, old_tid);
+        SHF_SNPRINTF(1, proc_pid_task_tid, "/proc/%u/task/%lu", atomic_load(&lock->pid), old_tid);
         struct stat sb;
         int value = stat(proc_pid_task_tid, &sb);
         if (-1 == value && ENOENT == errno) {
 #ifdef SHF_DEBUG_VERSION
-            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which went poof after line %u at macro pos %lu; forcing lock\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, lock->pid, lock->line, lock->macro);
+            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which went poof after line %u at macro pos %lu; forcing lock\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, atomic_load(&lock->pid), atomic_load(&lock->line), atomic_load(&lock->macro));
 #else
-            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which went poof; forcing lock\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, lock->pid);
+            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which went poof; forcing lock\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, atomic_load(&lock->pid));
 #endif
             shf_spin_unlock_force(lock, old_tid); /* force lock to be unlocked */
             goto RETRY_LOCK_AFTER_FORCE; /* because several threads / processes might try to force at the same time */
         }
         else {
-            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which is waaay too busy... why?\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, lock->pid);
+            fprintf(stderr, "WARN: lock reached max %u spins for tid %lu of pid %u because of tid %lu of pid %u which is waaay too busy... why?\n", SHF_SPIN_LOCK_SPIN_MAX, our_tid, getpid(), old_tid, atomic_load(&lock->pid));
             return SHF_SPIN_LOCK_STATUS_FAILED;
         }
     }
@@ -176,31 +190,13 @@ shf_spin_unlock(SHF_SPIN_LOCK * lock)
 #define SHF_BARRIER()   asm volatile(       "": : :"memory")
 #define SHF_CPU_PAUSE() asm volatile("pause\n": : :"memory")
 
-union SHF_RW_LOCK_UNION
-{
-    volatile uint32_t as_u64;
-    volatile uint32_t as_u32;
-    volatile uint16_t as_u16;
-    struct
-    {
-        volatile uint8_t     ticket_active_writer; /* starts at 1<<(0 * 8) in uint64_t */
-        volatile uint8_t pad_ticket_active_writer; /* starts at 1<<(1 * 8) in uint64_t */
-        volatile uint8_t     ticket_active_reader; /* starts at 1<<(2 * 8) in uint64_t */
-        volatile uint8_t pad_ticket_active_reader; /* starts at 1<<(3 * 8) in uint64_t */
-        volatile uint8_t     ticket_next         ; /* starts at 1<<(4 * 8) in uint64_t */
-        volatile uint8_t pad_ticket_next         ; /* starts at 1<<(5 * 8) in uint64_t */
-        volatile uint8_t     pad                 ; /* starts at 1<<(6 * 8) in uint64_t */
-        volatile uint8_t pad_pad                 ; /* starts at 1<<(7 * 8) in uint64_t */
-    } as_u08;
-} __attribute__((packed));
-
 typedef struct SHF_RW_LOCK {
-    volatile union SHF_RW_LOCK_UNION lock;
-    volatile pid_t                   pid;
+    _Atomic(uint64_t)                lock;
+    _Atomic(pid_t)                   pid;
 #ifdef SHF_DEBUG_VERSION
-    volatile uint32_t                line;
-    volatile uint64_t                macro;
-    volatile uint64_t                conflicts; /* count how often lock did not lock on first try */
+    _Atomic(uint32_t)                line;
+    _Atomic(uint64_t)                macro;
+    _Atomic(uint64_t)                conflicts; /* count how often lock did not lock on first try */
 #endif
 } SHF_RW_LOCK;
 
@@ -213,13 +209,12 @@ static inline void
 shf_rw_lock_writer(SHF_RW_LOCK * lock)
 {
     uint64_t spin                  = 0;
-    uint64_t tmp                   = __sync_fetch_and_add_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT); /* atomic increment ticket_next */
+    uint64_t tmp                   = atomic_fetch_add(&lock->lock, (uint64_t)SHF_RW_LOCK_INC_TICKET_NEXT); /* atomic increment ticket_next */
              tmp                 >>= 32;
     uint8_t  ticket_next_pre_inc   = tmp & 0xff;
+    atomic_fetch_and(&lock->lock,~(255ul<<(5*8)));
 
-    lock->lock.as_u08.pad_ticket_next = 0; /* ensure overflow never gets too big */
-
-    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_writer) { SHF_CPU_PAUSE(); spin ++; }
+    while (ticket_next_pre_inc != (atomic_load(&lock->lock) & 0xff)) { SHF_CPU_PAUSE(); spin ++; }
 
 #ifdef SHF_DEBUG_VERSION
     if (spin) {
@@ -231,41 +226,27 @@ shf_rw_lock_writer(SHF_RW_LOCK * lock)
 static inline void
 shf_rw_unlock_writer(SHF_RW_LOCK * lock)
 {
-    if (0) {
-        SHF_RW_LOCK tmp;
-        tmp.lock.as_u32 = lock->lock.as_u32;
 
-        SHF_BARRIER();
-
-        tmp.lock.as_u08.ticket_active_writer ++;
-        tmp.lock.as_u08.ticket_active_reader ++;
-
-        lock->lock.as_u32 = tmp.lock.as_u32;
-    }
-    else {
-        __sync_fetch_and_add_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER + SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_READER); /* atomic increment ticket_active_writer & ticket_active_reader */
-        lock->lock.as_u08.pad_ticket_active_writer = 0; /* ensure overflow never gets too big */
-        lock->lock.as_u08.pad_ticket_active_reader = 0; /* ensure overflow never gets too big */
-    }
+      atomic_fetch_add(&lock->lock, (uint64_t)(SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER + SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_READER)); /* atomic increment ticket_active_writer & ticket_active_reader */
+      atomic_fetch_and(&lock->lock, ~(0xFF00FF00ul));
 } /* shf_rw_unlock_writer() */
 
 static inline void
 shf_rw_lock_reader(SHF_RW_LOCK * lock)
 {
     uint64_t spin                  = 0;
-    uint64_t tmp                   = __sync_fetch_and_add_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT); /* atomic increment ticket_next */
+    uint64_t tmp                   = atomic_fetch_add(&lock->lock, (uint64_t)SHF_RW_LOCK_INC_TICKET_NEXT); /* atomic increment ticket_next */
              tmp                 >>= 32;
     uint8_t  ticket_next_pre_inc   = tmp & 0xff;
+    atomic_fetch_and(&lock->lock,~(255ul<<(5*8)));
 
-    lock->lock.as_u08.pad_ticket_next = 0; /* ensure overflow never gets too big */
-
-    while (ticket_next_pre_inc != lock->lock.as_u08.ticket_active_reader)  { SHF_CPU_PAUSE(); spin ++; } /* todo: add pid to identify trouble-maker when spinned for too long */
+    while (ticket_next_pre_inc != ((atomic_load(&lock->lock)>>16)&0xFFul))  { SHF_CPU_PAUSE(); spin ++; } /* todo: add pid to identify trouble-maker when spinned for too long */
     if (0) {
-        lock->lock.as_u08.ticket_active_reader ++; /* so that other readers can read concurrently (if no writer) */
+        atomic_fetch_add(&lock->lock,0x1ul<<16);
     }
     else {
-        __sync_add_and_fetch_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_READER); /* atomic increment ticket_active_reader */
-        lock->lock.as_u08.pad_ticket_active_reader = 0; /* ensure overflow never gets too big */
+        atomic_fetch_add(&lock->lock, (uint64_t)SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_READER); /* atomic increment ticket_active_reader */
+        atomic_fetch_and(&lock->lock,~(255ul << 24));
     }
 
 #ifdef SHF_DEBUG_VERSION
@@ -279,8 +260,8 @@ shf_rw_lock_reader(SHF_RW_LOCK * lock)
 static inline void
 shf_rw_unlock_reader(SHF_RW_LOCK * lock)
 {
-    __sync_add_and_fetch_8(&lock->lock.as_u64, SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER); /* atomic increment ticket_active_writer */
-    lock->lock.as_u08.pad_ticket_active_writer = 0; /* ensure overflow never gets too big */
+    atomic_fetch_add(&lock->lock, (uint64_t)SHF_RW_LOCK_INC_TICKET_NEXT_ACTIVE_WRITER); /* atomic increment ticket_active_writer */
+    atomic_fetch_and(&lock->lock,~(255ul<<8));
 } /* shf_rw_unlock_reader() */
 
 #if 0

@@ -24,8 +24,13 @@
 #ifndef __SHF_DEFINES_H__
 #define __SHF_DEFINES_H__
 
+#ifdef __cplusplus
+#include <cstdint>
+#include <cstring>
+#else
 #include <stdint.h>
 #include <string.h> /* for strerror() */
+#endif
 #include <syslog.h> /* for LOG_INFO etc */
 
 __attribute__((weak)) __thread int32_t   shf_debug_disabled = 0;

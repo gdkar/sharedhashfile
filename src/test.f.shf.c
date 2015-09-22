@@ -232,10 +232,10 @@ int main(void)
              uint32_t   process;
              uint32_t   processes = cpu_count > TEST_MAX_PROCESSES ? TEST_MAX_PROCESSES : cpu_count;
              uint32_t   counts_old[TEST_MAX_PROCESSES] = { 0 };
-    volatile uint32_t * put_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != put_counts, "mmap(): %u: ", errno);
-    volatile uint32_t * get_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != get_counts, "mmap(): %u: ", errno);
-    volatile uint32_t * mix_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != mix_counts, "mmap(): %u: ", errno);
-    volatile uint64_t * start_line = mmap(NULL, SHF_MOD_PAGE(                 3*sizeof(uint64_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != mix_counts, "mmap(): %u: ", errno);
+    uint32_t * put_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != put_counts, "mmap(): %u: ", errno);
+    uint32_t * get_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != get_counts, "mmap(): %u: ", errno);
+    uint32_t * mix_counts = mmap(NULL, SHF_MOD_PAGE(TEST_MAX_PROCESSES*sizeof(uint32_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != mix_counts, "mmap(): %u: ", errno);
+    uint64_t * start_line = mmap(NULL, SHF_MOD_PAGE(                 3*sizeof(uint64_t)), PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED | MAP_NORESERVE, -1, 0); SHF_ASSERT(MAP_FAILED != mix_counts, "mmap(): %u: ", errno);
     SHF_ASSERT(sizeof(uint64_t) == sizeof(long), "INTERNAL: expected sizeof(uint64_t) == sizeof(long), but got %lu == %lu", sizeof(uint64_t), sizeof(long));
     start_line[0] = 0;
     start_line[1] = 0;
@@ -248,7 +248,7 @@ int main(void)
                 long previous_long_value;
                 SHF_UNUSE(previous_long_value);
 
-                previous_long_value = InterlockedExchangeAdd((long volatile *) &start_line[0], 1);
+                previous_long_value = atomic_fetch_add((_Atomic(long) *) &start_line[0], 1);
                 while (processes != start_line[0]) { SHF_YIELD(); }
                 TEST_INIT_CHILD();
                 for (uint32_t i = 0; i < (1 + (test_keys / processes)); i++) {
@@ -259,7 +259,7 @@ int main(void)
                 TEST_PUT_POST();
                 TEST_MIX_PRE();
                 usleep(2000000); /* 2 seconds */
-                previous_long_value = InterlockedExchangeAdd((long volatile *) &start_line[1], 1);
+                previous_long_value = InterlockedExchangeAdd((_Atomic(long)*) &start_line[1], 1);
                 while (processes != start_line[1]) { SHF_YIELD(); }
                 for (uint32_t i = 0; i < (1 + (test_keys / processes)); i++) {
                     uint32_t key = test_keys / processes * process + i;
@@ -268,7 +268,7 @@ int main(void)
                 TEST_MIX_POST();
                 TEST_GET_PRE();
                 usleep(2000000); /* 2 seconds */
-                previous_long_value = InterlockedExchangeAdd((long volatile *) &start_line[2], 1);
+                previous_long_value = InterlockedExchangeAdd((_Atomic(long) *) &start_line[2], 1);
                 while (processes != start_line[2]) { SHF_YIELD(); }
                 for (uint32_t i = 0; i < (1 + (test_keys / processes)); i++) {
                     uint32_t key = test_keys / processes * process + i;

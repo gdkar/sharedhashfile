@@ -89,18 +89,18 @@ typedef struct SHF_WIN_MMAP {
     volatile uint64_t     tabs_parted_new       ; /* parted in new tab */
     volatile uint64_t     keylen_misses         ; /* times hash   matched but keylen didn't match */
     volatile uint64_t     memcmp_misses         ; /* times keylen matched but key    didn't match */
-} __attribute__((packed)) SHF_WIN_MMAP;
+} SHF_WIN_MMAP;
 
 typedef struct SHF_SHF_MMAP {
     SHF_WIN_MMAP wins[SHF_WINS_PER_SHF]; /* 256 WINdows */
-} __attribute__((packed)) SHF_SHF_MMAP;
+} SHF_SHF_MMAP;
 
 typedef struct SHF_Q_LOCK_MMAP {
     SHF_LOCK lock;
 #ifdef SHF_DEBUG_VERSION
     uint32_t debug_magic;
 #endif
-} __attribute__((packed)) SHF_Q_LOCK_MMAP;
+} SHF_Q_LOCK_MMAP;
 
 typedef struct SHF_QID_MMAP {
     volatile uint32_t head;
@@ -126,7 +126,7 @@ typedef struct SHF_Q {
     SHF_QIID_MMAP   * qiids           ;
     SHF_Q_LOCK_MMAP * q_lock          ;
     uint32_t          q_is_ready      ; /* successfully called shf_q_(new|get)()? */
-} __attribute__((packed)) SHF_Q;
+} SHF_Q;
 
 typedef struct SHF_LOG_MMAP {
 #ifdef SHF_DEBUG_VERSION
@@ -147,7 +147,7 @@ typedef struct SHF_LOG_MMAP {
     volatile uint8_t  tids[65536];
     volatile uint8_t  tid_id     ;
              char     bytes[0]   ;
-} __attribute__((packed)) SHF_LOG_MMAP;
+} SHF_LOG_MMAP;
 
 typedef struct SHF {
     uint32_t       version                                 ; /* todo: implement version */

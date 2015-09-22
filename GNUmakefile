@@ -22,19 +22,20 @@ MAKEFLAGS = --no-builtin-rules
 .SECONDARY:
 
 CC              = gcc
-CXXFLAGS        = -c -g -W -Waggregate-return -Wall -Werror -Wcast-align -Wcast-qual -Wchar-subscripts
-CXXFLAGS       += -Wcomment -Wformat -Wmissing-declarations -Wparentheses -Wpointer-arith -Wredundant-decls
-CXXFLAGS       +=  -Wreturn-type -Wshadow -Wswitch -Wtrigraphs -Wwrite-strings -O
-CXXFLAGS       += -fno-inline-functions-called-once -fPIC -Wuninitialized -Wunused -march=x86-64 -I. -Isrc
-CFLAGS          = -Wimplicit -Wmissing-prototypes -Wnested-externs -Wstrict-prototypes -std=gnu99
+CPPFLAGS        = -c -g -W -Waggregate-return -Wall -Werror -Wcast-align -Wcast-qual -Wchar-subscripts
+CPPFLAGS       += -Wcomment -Wformat -Wmissing-declarations -Wparentheses -Wpointer-arith -Wredundant-decls
+CPPFLAGS       +=  -Wreturn-type -Wshadow -Wswitch -Wtrigraphs -Wwrite-strings -O
+CPPFLAGS       += -fno-inline-functions-called-once -fPIC -Wuninitialized -Wunused -march=x86-64 -I. -Isrc
+CFLAGS          = -Wimplicit -Wmissing-prototypes -Wnested-externs -Wstrict-prototypes -std=gnu11
+CXXFLAGS        = -std=gnu++14
 ifneq ($(filter debug,$(MAKECMDGOALS)),)
 BUILD_TYPE      = debug
 BUILD_TYPE_NODE = Debug
-CXXFLAGS       += -DSHF_DEBUG_VERSION
+CPPFLAGS       += -DSHF_DEBUG_VERSION
 else
 BUILD_TYPE = release
 BUILD_TYPE_NODE = Release
-CXXFLAGS       += -O3
+CPPFLAGS       += -O3
 endif
 DEPS_H          = $(wildcard ./src/*.h)
 DEPS_HPP        = $(wildcard ./src/*.hpp)
@@ -97,11 +98,11 @@ all: eolws tab $(MAIN_EXES) $(TEST_EXES) $(BUILD_TYPE)/SharedHashFile.a $(BUILD_
 
 $(BUILD_TYPE)/%.o: ./src/%.c $(DEPS_H)
 	@echo "make: compiling: $@"
-	@$(CC) -o $@ $< $(CXXFLAGS) $(CFLAGS)
+	@$(CC) -o $@ $< $(CPPFLAGS) $(CFLAGS)
 
 $(BUILD_TYPE)/%.o: ./src/%.cpp $(DEPS_H) $(DEPS_HPP)
 	@echo "make: compiling: $@"
-	@$(CC) -o $@ $< $(CXXFLAGS)
+	@$(CC) -o $@ $< $(CPPFLAGS) $(CXXFLAGS)
 
 $(BUILD_TYPE)/%.a: $(PROD_OBJS_C) $(PROD_OBJS_CPP)
 	@echo "make: archiving: $@"
